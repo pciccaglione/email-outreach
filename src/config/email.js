@@ -5,15 +5,22 @@ const emailConfig = {
   
   smtp: {
     host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT),
-    secure: false, // Use TLS
+    port: parseInt(process.env.SMTP_PORT) || 587,
+    secure: false, // Use STARTTLS with port 587
+    requireTLS: true,
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS
     },
     tls: {
-      rejectUnauthorized: false
-    }
+      rejectUnauthorized: false,
+      minVersion: 'TLSv1.2'
+    },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
+    logger: false,
+    debug: false
   },
 
   imap: {
