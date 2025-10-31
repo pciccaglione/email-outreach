@@ -86,15 +86,17 @@ class InboxMonitor {
       // Process each message
       for (const message of messages) {
         try {
-          await this.processMessage(message);
-          results.responses++;
+          const wasResponse = await this.processMessage(message);
+          if (wasResponse) {
+            results.responses++;
+          }
         } catch (error) {
           logger.error('Error processing message:', error);
           results.errors++;
         }
       }
 
-      logger.info(`Inbox check complete: ${results.responses} responses found, ${results.errors} errors`);
+      logger.info(`Inbox check complete: ${results.responses} legitimate responses from contacts, ${results.errors} errors`);
       
       return results;
     } catch (error) {
@@ -106,6 +108,7 @@ class InboxMonitor {
   /**
    * Process individual message
    * @param {object} message - IMAP message
+   * @returns {boolean} True if this was a legitimate response from a contact
    */
   async processMessage(message) {
     try {
@@ -116,7 +119,7 @@ class InboxMonitor {
       
       if (!headerPart) {
         logger.warn('No headers found in message');
-        return;
+        return false;
       }
 
       const headers = parseHeaders(headerPart.body);
@@ -125,20 +128,22 @@ class InboxMonitor {
       const senderEmail = extractEmailAddress(headers.from);
       if (!senderEmail) {
         logger.warn('Could not extract sender email');
-        return;
+        return false;
       }
 
       // Check if sender is in our contacts
       const contact = contactManager.getContactByEmail(senderEmail);
       if (!contact) {
-        // Not a contact we've reached out to
-        return;
+        // Not a contact we've reached out to - this is normal (junk mail, etc.)
+        logger.debug(`Email from ${senderEmail} - not a contact we've reached out to`);
+        return false;
       }
 
       // Check if already marked as responded
       if (contact.status === 'responded') {
         // Already processed this response
-        return;
+        logger.debug(`Email from ${senderEmail} - already marked as responded`);
+        return false;
       }
 
       // Extract body
@@ -153,8 +158,8 @@ class InboxMonitor {
       };
 
       if (!isLegitimateReply(email)) {
-        logger.debug(`Skipping non-legitimate reply from ${senderEmail}`);
-        return;
+        logger.debug(`Skipping non-legitimate reply from ${senderEmail} (auto-reply or bounce)`);
+        return false;
       }
 
       // Mark contact as responded
@@ -164,6 +169,8 @@ class InboxMonitor {
         subject: headers.subject,
         previousStatus: contact.status
       });
+
+      return true;
 
     } catch (error) {
       logger.error('Error processing message:', error);
